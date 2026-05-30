@@ -1,0 +1,6 @@
+{
+  "_comment": "Template for .claude/settings.local.json (which is gitignored). After cloning, run .claude/hooks/install.sh to seed a copy of this file as settings.local.json, then fill in real values for your machine. Skills, hooks, and CLAUDE.md reference these as $VAR_NAME — they are exported into the Claude session's environment via the env block below. NOTE for ccnn: no skill or hook currently references any $VAR_NAME, so nothing here needs filling in today. Notesnook credentials (account password, API tokens) live in a top-level .env file, NOT here. The placeholder below documents the shape for when a future skill needs a per-developer path or host.",
+  "env": {
+    "EXAMPLE_VAR": "replace-when-a-skill-or-hook-actually-references-this"
+  }
+}

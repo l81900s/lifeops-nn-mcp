@@ -55,6 +55,24 @@ npm test
 
 Fill in real commands as the project grows. Pin Node to the current Active LTS (Node 22.x as of 2026-05) in `package.json` `engines`.
 
+## Local configuration (personal paths, credentials)
+
+The tracked `.claude/` directory is shared across anyone working on ccnn. Anything that varies per-developer — credential paths, dev hostnames, local DB URLs, SSH keys — belongs in `.claude/settings.local.json` (gitignored). Skills, hooks, and this file reference those values as `$VAR_NAME`, and Claude Code exports them into the session's environment via the file's `env` block.
+
+After cloning, run once:
+
+```bash
+.claude/hooks/install.sh
+```
+
+This sets `core.hooksPath` to `.claude/hooks/git`, marks the hook scripts executable, and seeds `settings.local.json` from the tracked `settings.example.json` template if you don't already have one.
+
+The pre-commit guard at `.claude/hooks/git/pre-commit.d/00-protect-tracked-claude-files.sh` blocks any commit that touches shared `.claude/` files. Only the maintainer should bypass it, by exporting `CLAUDE_BOOTSTRAP_MAINTAINER=1` (typically in their shell rc).
+
+**For Claude:** when asked to change a credential path or hostname, edit `.claude/settings.local.json`, NOT the skill, hook, or CLAUDE.md that references it. If the value isn't already a `$VAR_NAME`, propose renaming it to one and add the variable to both `settings.example.json` (with a redacted placeholder) and `settings.local.json` (with the real value) — but only update `settings.example.json` if you're the maintainer.
+
+ccnn currently has zero `$VAR_NAME` references — Notesnook credentials live in a top-level `.env` (already gitignored and denied in `settings.json`), not in `settings.local.json`. The convention is in place for when a future skill needs one.
+
 ## Important Caveats
 
 - **Node / package manager**: pin Node to an LTS version in `package.json` `engines` so contributors and CI match. Default to **npm** unless there's a reason to use pnpm/yarn; do not mix lockfiles.
@@ -83,6 +101,7 @@ Every commit subject line ends with one of these tags:
 | `node` | Required Node version changed (`engines` bumped). Re-install Node / update `nvm use`. |
 | `env` | A new env var or `.env` entry is needed (e.g., a new Notesnook credential). Document the var in commit body. |
 | `mcp-config` | The MCP registration in `.mcp.json` changed (server name, command, args). Restart the dev Claude session to pick up the change. |
+| `hooks` | `.claude/hooks/git/` or `install.sh` changed. Re-run `.claude/hooks/install.sh` to pick up new dispatcher scripts or permissions. |
 
 Add more `breaks:` items as the project grows. Keep the table truthful — only list items that actually apply.
 

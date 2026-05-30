@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Project pre-commit dispatcher.
+#
+# Wired up by .claude/hooks/install.sh, which sets
+#   git config core.hooksPath .claude/hooks/git
+# so this file runs in place of .git/hooks/pre-commit.
+#
+# Runs every executable file in .claude/hooks/git/pre-commit.d/ in sorted
+# order. Any non-zero exit aborts the commit.
+
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+D_DIR="$HOOK_DIR/pre-commit.d"
+
+[[ -d "$D_DIR" ]] || exit 0
+
+shopt -s nullglob
+for hook in "$D_DIR"/*; do
+  [[ -x "$hook" ]] || continue
+  "$hook" || exit $?
+done
