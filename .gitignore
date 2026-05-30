@@ -216,3 +216,73 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+### Linux ###
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+### macOS ###
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+
+# Gitignored dir for Claude's context / conversation summaries / scratch files.
+# Anything you want to keep around but never commit goes here.
+GITIGNORED/
+
+
+# Claude Code — never commit local-only or private-tagged files inside .claude/
+.claude/*.local.*
+.claude/*.Local.*
+.claude/*.LOCAL.*
+.claude/*.private.*
+.claude/*.Private.*
+.claude/*.PRIVATE.*
+.claude/settings.local.json
+.claude/context-summaries/
+
+# Claude Code multi-session workflow markers and cross-session handoff artifacts.
+# These are session-state files, not source — never commit.
+.claude/PROXY_MODE
+.claude/DEPUTY_MODE
+.claude/deploy-reports/
+
+
+# Python virtualenvs (any flavor)
+.v-*/
+venv*/
+.venv*/
+
+
+# Tooling caches commonly created by Claude-driven workflows
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+
+# Common secret-bearing files (defense-in-depth — also denied in settings.json)
+.env
+.env.*
+*.pem
+*.key
+service-account-*.json
