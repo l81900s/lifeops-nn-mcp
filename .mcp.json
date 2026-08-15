@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lifeops-nn-mcp": {
+      "command": "node",
+      "args": ["dist/server.js"],
+      "env": {}
+    }
+  }
+}
