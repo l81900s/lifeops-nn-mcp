@@ -1,3 +1,23 @@
+# --- Node / TypeScript (this is a Node MCP server) ---
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Runtime state, session, cache, and credentials NEVER live in this repo — they
+# live in lifeops-data/state/nn-mcp (gitea-only). These patterns are defense-in-
+# depth in case something writes here by mistake. (credentials.example.json, the
+# tracked template, is deliberately NOT matched.)
+*.sqlite
+*.sqlite-*
+kv.json
+state/
+credentials.json
+
+# Throwaway/scratch source (e.g. _smoke.ts) — run locally via tsx, never committed.
+src/_*.ts
+
+# --- Python (from the bootstrap template; harmless to keep) ---
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
