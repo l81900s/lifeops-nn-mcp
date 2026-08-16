@@ -17,19 +17,20 @@ async function main() {
   const config = loadConfig();
   const client = new NotesnookClient(config);
   await client.init();
-  await client.ensureAuthenticated(); // throws with guidance if not bootstrapped
-
-  try {
-    const { merged } = await client.sync();
-    console.error(`[lifeops-nn-mcp] initial sync ok (itemsMerged=${merged})`);
-  } catch (e: any) {
-    console.error(`[lifeops-nn-mcp] initial sync failed (continuing with cache): ${e?.message ?? e}`);
-  }
+  await client.ensureAuthenticated(); // local (derive key), fast; throws if not bootstrapped
 
   const server = new McpServer({ name: "lifeops-nn-mcp", version: "0.1.0" });
   registerTools(server, client);
+  // Connect FIRST so the MCP handshake is answered immediately. A blocking initial
+  // sync here previously delayed the handshake ~20s on a slow link, and Claude Code
+  // timed out the connection. Tools serve the local cache; the background sync below
+  // refreshes it, and nn_sync forces a fresh pull on demand.
   await server.connect(new StdioServerTransport());
   console.error("[lifeops-nn-mcp] ready on stdio");
+
+  client.sync()
+    .then(({ merged }) => console.error(`[lifeops-nn-mcp] initial sync ok (itemsMerged=${merged})`))
+    .catch((e: any) => console.error(`[lifeops-nn-mcp] initial sync failed (serving cache): ${e?.message ?? e}`));
 }
 
 main().catch((e) => {
