@@ -48,9 +48,24 @@ export interface AttachmentData {
 export class NotesnookClient {
   private db: any;
   private readonly config: Config;
+  /**
+   * Serializes every `db.sync(...)` call (fetch and send). `@notesnook/core`'s sync
+   * is not known to be reentrancy-safe, and this single client instance is shared by
+   * all sync/write tools in a long-lived stdio server — concurrent tool calls could
+   * otherwise run a fetch and a send against the same Database at once and corrupt
+   * the sync cursor. All syncs chain through here so at most one runs at a time.
+   */
+  private syncChain: Promise<unknown> = Promise.resolve();
 
   constructor(config: Config) {
     this.config = config;
+  }
+
+  /** Run `fn` after any in-flight sync completes; the chain never rejects. */
+  private runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.syncChain.then(fn, fn);
+    this.syncChain = run.then(() => {}, () => {});
+    return run;
   }
 
   /** Boot the headless database. Idempotent-ish; call once per process. */
@@ -124,16 +139,95 @@ export class NotesnookClient {
 
   /** Pull latest data from the server (read-only fetch). Returns items merged. */
   async sync(force = false): Promise<{ merged: number; lastSynced: number }> {
-    let merged = 0;
-    // subscribe(...) returns { unsubscribe }; capture it so repeated syncs in the
-    // long-running server don't leak a listener per call.
-    const sub = this.db.eventManager.subscribe("sync:itemMerged", () => { merged++; });
+    return this.runExclusive(async () => {
+      let merged = 0;
+      // subscribe(...) returns { unsubscribe }; capture it so repeated syncs in the
+      // long-running server don't leak a listener per call.
+      const sub = this.db.eventManager.subscribe("sync:itemMerged", () => { merged++; });
+      try {
+        await this.db.sync({ type: "fetch", force });
+      } finally {
+        try { sub?.unsubscribe?.(); } catch { /* ignore */ }
+      }
+      return { merged, lastSynced: await this.db.lastSynced() };
+    });
+  }
+
+  /**
+   * Push local (unsynced) changes UP to the server. `sync()` only ever does a
+   * "fetch" (pull); a write is not durable — and never reaches the phone — until
+   * it's been "send"-synced. Every write helper below calls this after mutating.
+   * NOTE: a "send" flushes ALL pending local changes, not just the caller's — which
+   * is why the write helpers must not leave half-made items in the DB (see createNote).
+   */
+  private async push(): Promise<void> {
+    await this.runExclusive(() => this.db.sync({ type: "send" }));
+  }
+
+  /**
+   * Resolve a notebook id by title, creating the notebook if it doesn't exist.
+   * Title match is exact (core's `notebooks.find`). Used so callers can address a
+   * notebook by human name ("Projects") without tracking its id.
+   */
+  async ensureNotebook(title: string): Promise<string> {
+    const existing = await this.db.notebooks.find(title);
+    if (existing?.id) return existing.id;
+    const id = await this.db.notebooks.add({ title });
+    if (!id) throw new Error(`Failed to create notebook "${title}"`);
+    return id;
+  }
+
+  /**
+   * Create a note and push it to the server. `contentHtml` is tiptap HTML (the
+   * editor's native format) — standard tags (p, h1-h3, ul/ol/li, strong, em, a,
+   * blockquote, code) render correctly in the Notesnook apps. When `notebook` is
+   * given, the note is filed under that notebook (created on demand). Returns the
+   * freshly-read note so the caller can confirm what landed.
+   */
+  async createNote(args: { title: string; contentHtml?: string; notebook?: string }): Promise<NoteDetail | null> {
+    // Resolve/create the notebook FIRST: if that fails, no note has been made yet,
+    // so there's nothing half-created to leak on a later push.
+    const nbId = args.notebook ? await this.ensureNotebook(args.notebook) : undefined;
+
+    const id: string = await this.db.notes.add({
+      title: args.title,
+      content: { type: "tiptap", data: args.contentHtml ?? "" },
+    });
+    if (!id) throw new Error("notes.add returned no id");
+
+    // From here the note exists locally. If filing or the push fails, roll it back
+    // (soft-delete + push) so a subsequent unrelated write's "send" can't silently
+    // sync this unconfirmed note to the account. Then rethrow so the caller sees the
+    // failure honestly rather than a phantom success.
     try {
-      await this.db.sync({ type: "fetch", force });
-    } finally {
-      try { sub?.unsubscribe?.(); } catch { /* ignore */ }
+      if (nbId) await this.db.notes.addToNotebook(nbId, id);
+      await this.push();
+    } catch (e) {
+      try { await this.db.notes.moveToTrash(id); await this.push(); } catch { /* best-effort rollback */ }
+      throw e;
     }
-    return { merged, lastSynced: await this.db.lastSynced() };
+    return this.readNote(id);
+  }
+
+  /**
+   * Update an existing note's title and/or content, then push. Only the provided
+   * fields change (passing neither is a no-op write). Throws if the id is unknown,
+   * so a typo can't silently create a stray note. Returns the re-read note.
+   *
+   * WARNING: `contentHtml` REPLACES the entire note body — it is not a merge or
+   * append. Any content (including embedded image/attachment references) not present
+   * in the new HTML is lost from the note. To edit a note, read it first
+   * (`readNote`) and pass back the full body with your changes applied.
+   */
+  async updateNote(args: { id: string; title?: string; contentHtml?: string }): Promise<NoteDetail | null> {
+    const existing = await this.db.notes.note(args.id);
+    if (!existing) throw new Error(`No note with id ${args.id}`);
+    const patch: any = { id: args.id };
+    if (args.title !== undefined) patch.title = args.title;
+    if (args.contentHtml !== undefined) patch.content = { type: "tiptap", data: args.contentHtml };
+    await this.db.notes.add(patch);
+    await this.push();
+    return this.readNote(args.id);
   }
 
   /** Most-recently-created notes, newest first. */
