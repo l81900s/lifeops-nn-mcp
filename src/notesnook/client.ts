@@ -222,8 +222,11 @@ export class NotesnookClient {
   async updateNote(args: { id: string; title?: string; contentHtml?: string }): Promise<NoteDetail | null> {
     const existing = await this.db.notes.note(args.id);
     if (!existing) throw new Error(`No note with id ${args.id}`);
-    const patch: any = { id: args.id };
-    if (args.title !== undefined) patch.title = args.title;
+    // ALWAYS pass a title: core re-derives/blanks the title from content on a
+    // content-only save (a content update with no title turns the title into a
+    // timestamp like "19-08-2026 09:24"). Preserve the existing title unless the
+    // caller is explicitly changing it.
+    const patch: any = { id: args.id, title: args.title !== undefined ? args.title : existing.title };
     if (args.contentHtml !== undefined) patch.content = { type: "tiptap", data: args.contentHtml };
     await this.db.notes.add(patch);
     await this.push();
